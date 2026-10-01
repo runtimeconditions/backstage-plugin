@@ -13,15 +13,16 @@ const record: FulfillmentRecord = {
       provider: 'kubernetes',
       reference: 'rc-cilium/applications/request-coordinator-egress',
       componentRef: 'component:default/request-coordinator',
+      automation: { tool: 'kratix', reference: 'cnp-promise' },
     },
     {
       kind: 'Certificate',
       provider: 'kubernetes',
       reference: 'rc-cilium/applications/request-coordinator-mtls',
       componentRef: 'component:default/request-coordinator',
+      automation: { tool: 'kratix', reference: 'cert-promise' },
     },
   ],
-  automation: { tool: 'kratix', reference: 'runtime-conditions-profile' },
 };
 
 describe('createRouter', () => {
@@ -48,5 +49,30 @@ describe('createRouter', () => {
       .get('/fulfillments')
       .query({ profileName: record.profileName, condition: record.condition });
     expect(match.body).toEqual([record]);
+  });
+
+  it('keeps independent adapters posting to the same condition and environment separate', async () => {
+    const app = express().use(createRouter());
+    const secretsAdapterRecord: FulfillmentRecord = {
+      profileName: record.profileName,
+      condition: record.condition,
+      environment: record.environment,
+      resources: [
+        {
+          kind: 'Secret',
+          provider: 'kubernetes',
+          reference: 'rc-cilium/applications/request-coordinator-credentials',
+          automation: { tool: 'kratix', reference: 'secrets-promise' },
+        },
+      ],
+    };
+
+    await request(app).post('/fulfillments').send(record);
+    await request(app).post('/fulfillments').send(secretsAdapterRecord);
+
+    const result = await request(app)
+      .get('/fulfillments')
+      .query({ profileName: record.profileName, condition: record.condition });
+    expect(result.body).toEqual([record, secretsAdapterRecord]);
   });
 });

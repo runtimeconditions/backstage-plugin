@@ -5,6 +5,7 @@ export interface FulfillingResource {
   provider: string;
   reference: string;
   componentRef?: string;
+  automation?: { tool: string; reference?: string };
 }
 
 export interface FulfillmentRecord {
@@ -13,7 +14,6 @@ export interface FulfillmentRecord {
   condition: string;
   environment: string;
   resources: FulfillingResource[];
-  automation?: { tool: string; reference?: string };
 }
 
 export async function fetchFulfillments(

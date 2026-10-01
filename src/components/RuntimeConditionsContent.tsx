@@ -57,15 +57,14 @@ const ProfileCard = ({
 
   const data: ConditionRow[] = profile.conditions.map(condition => {
     const conditionFulfillments = fulfillments?.filter(f => f.condition === condition.name) ?? [];
+    const environmentCount = new Set(conditionFulfillments.map(f => f.environment)).size;
     return {
       name: condition.name,
       kind: condition.kind,
       interfaceType: condition.interface.type,
       optional: condition.optional ? 'yes' : 'no',
       fulfillmentCount:
-        conditionFulfillments.length === 0
-          ? 'none'
-          : `${conditionFulfillments.length} environment${conditionFulfillments.length === 1 ? '' : 's'}`,
+        environmentCount === 0 ? 'none' : `${environmentCount} environment${environmentCount === 1 ? '' : 's'}`,
       fulfillments: conditionFulfillments,
     };
   });
@@ -103,7 +102,7 @@ const ProfileCard = ({
               provider: r.provider,
               reference: r.reference,
               kubernetesLink: r.provider === 'kubernetes' ? kubernetesEntityLink(r.componentRef) : undefined,
-              automation: f.automation ? f.automation.tool : '—',
+              automation: r.automation ? r.automation.tool : '—',
             })),
           );
           if (resourceRows.length === 0) {

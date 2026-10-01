@@ -78,16 +78,10 @@ POST /api/runtime-conditions/fulfillments
       "kind": "CiliumNetworkPolicy",
       "provider": "kubernetes",
       "reference": "rc-cilium/applications/request-coordinator-egress",
-      "componentRef": "component:default/inventory-service"
-    },
-    {
-      "kind": "Certificate",
-      "provider": "kubernetes",
-      "reference": "rc-cilium/applications/request-coordinator-mtls",
-      "componentRef": "component:default/inventory-service"
+      "componentRef": "component:default/inventory-service",
+      "automation": { "tool": "kratix", "reference": "cnp-promise" }
     }
-  ],
-  "automation": { "tool": "kratix", "reference": "runtime-conditions-profile" }
+  ]
 }
 ```
 
@@ -99,16 +93,29 @@ POST /api/runtime-conditions/fulfillments
 - Each resource's `reference` is whatever uniquely identifies it in its
   environment, e.g. `cluster/namespace/kind/name` for Kubernetes or an ARN
   for a cloud resource.
-- `resource.provider` and `automation.tool` are free-form strings, not an
-  enum, since the set of platforms and automation tools isn't fixed.
-- `resource.componentRef` and `automation` are optional. When a resource's
-  `provider` is `"kubernetes"` and it carries a `componentRef`, the frontend
-  links its reference to that component's Kubernetes tab in the Kubernetes
-  Backstage plugin.
+- `resource.provider` and `resource.automation.tool` are free-form strings,
+  not an enum, since the set of platforms and automation tools isn't fixed.
+- `resource.componentRef` and `resource.automation` are optional. When a
+  resource's `provider` is `"kubernetes"` and it carries a `componentRef`,
+  the frontend links its reference to that component's Kubernetes tab in the
+  Kubernetes Backstage plugin.
+- `automation` lives on each resource, not on the fulfillment as a whole,
+  because a single POST doesn't have to come from one adapter's work: a
+  platform composed of several independent adapters (say, separate Kratix
+  Promises for network policy, certificates, and secrets) can each POST
+  their own resources for the same condition and environment, and each
+  resource keeps its own automation provenance.
+
+Every POST is purely additive, nothing is ever looked up by key and
+overwritten, so multiple adapters can post to the same profile, condition,
+and even the same environment concurrently without racing or clobbering
+each other; each POST's resources simply show up alongside whatever else
+has already been reported for that condition.
 
 The frontend reads `GET /api/runtime-conditions/fulfillments?profileName=...`.
 A single condition can be fulfilled in more than one environment (dev, prod,
 federal), each independently, so the conditions table shows how many
-environments have reported a fulfillment for that condition; expanding a row
-shows a table of every environment, resource, and automation tool involved.
-A condition with no reported fulfillment shows none, it is never inferred.
+distinct environments have reported a fulfillment for that condition, even
+if multiple adapters posted to the same one; expanding a row shows a table
+of every environment, resource, and automation tool involved. A condition
+with no reported fulfillment shows none, it is never inferred.

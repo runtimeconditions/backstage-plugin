@@ -1,13 +1,14 @@
+export interface FulfillingAutomation {
+  tool: string;
+  reference?: string;
+}
+
 export interface FulfillingResource {
   kind: string;
   provider: string;
   reference: string;
   componentRef?: string;
-}
-
-export interface FulfillingAutomation {
-  tool: string;
-  reference?: string;
+  automation?: FulfillingAutomation;
 }
 
 export interface FulfillmentRecord {
@@ -16,5 +17,4 @@ export interface FulfillmentRecord {
   condition: string;
   environment: string;
   resources: FulfillingResource[];
-  automation?: FulfillingAutomation;
 }
