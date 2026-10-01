@@ -1,5 +1,5 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
-import { discoveryApiRef, fetchApiRef, useApi } from '@backstage/core-plugin-api';
+import { discoveryApiRef, fetchApiRef, useApi, useApiHolder } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { parseEntityRef } from '@backstage/catalog-model';
 import useAsync from 'react-use/esm/useAsync';
@@ -140,9 +140,9 @@ const ProfileCard = ({
 
 export const RuntimeConditionsContent = () => {
   const { entity } = useEntity();
-  const kubernetesApi = useApi(kubernetesApiRef);
+  const kubernetesApi = useApiHolder().get(kubernetesApiRef);
   const { value, loading, error } = useAsync(
-    () => fetchAllProfiles(kubernetesApi),
+    () => (kubernetesApi ? fetchAllProfiles(kubernetesApi) : Promise.resolve([])),
     [kubernetesApi],
   );
 
