@@ -15,8 +15,13 @@ is never inferred by this plugin, only reported by an adapter.
 
 ## Install
 
-Add this repo as a dependency in your app's `packages/app`, then in
-`packages/app/src/components/catalog/EntityPage.tsx`:
+Add the package to your app's `packages/app`:
+
+```
+yarn --cwd packages/app add @runtimeconditions/plugin-runtime-conditions
+```
+
+Then in `packages/app/src/components/catalog/EntityPage.tsx`:
 
 ```tsx
 import {
@@ -60,6 +65,10 @@ current fetch does.
 `backend/` is `@runtimeconditions/plugin-runtime-conditions-backend`, a
 companion backend plugin an adapter reports fulfillment to. Add it to your
 app's `packages/backend`:
+
+```
+yarn --cwd packages/backend add @runtimeconditions/plugin-runtime-conditions-backend
+```
 
 ```ts
 backend.add(import('@runtimeconditions/plugin-runtime-conditions-backend'));
@@ -119,3 +128,12 @@ distinct environments have reported a fulfillment for that condition, even
 if multiple adapters posted to the same one; expanding a row shows a table
 of every environment, resource, and automation tool involved. A condition
 with no reported fulfillment shows none, it is never inferred.
+
+## Releases
+
+Merging a `feat`, `fix`, `perf`, `revert`, or breaking change to `main`
+publishes both packages to npm at the same version, tags the merge commit
+`vX.Y.Z`, and creates a GitHub release. Other changes, such as docs or CI, do
+not release. Versions follow semantic versioning and come from the PR titles
+described in `CONTRIBUTING.md`. Publishing uses npm trusted publishing, so no
+token is stored; `CONTRIBUTING.md` lists the one-time setup.
