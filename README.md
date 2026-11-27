@@ -1,21 +1,28 @@
 # backstage-plugin
-A Backstage Plugin for supporting Runtime Conditions Profiles
 
-Adds a "Runtime Conditions" tab to a Component's page. A `RuntimeConditionsProfile`
-describes one codebase, independent of where it's deployed, so a single profile
-can exist as a resource in more than one cluster (dev, prod, federal, and so
-on). The tab shows one card per cluster where a matching profile is found,
-each is a distinct deployment of that codebase.
+A Backstage plugin for Runtime Conditions Profiles.
 
-Each card shows the profile's workload, its extensions, and its declared
-conditions, alongside which resource fulfilled each condition, if a platform
-adapter (see `runtimeconditions/rc-demos/tree/main/cilium-policy/adapter` for
-an example) has reported one through the fulfillment API below. Fulfillment
-is never inferred by this plugin, only reported by an adapter.
+A `RuntimeConditionsProfile` is a portable, machine-readable list of what one workload needs at runtime. This plugin adds a **Runtime Conditions** tab to a Component's page. The tab shows one card per cluster where a matching profile is found, with the profile's workload, extensions, declared conditions, and which resources fulfilled each condition, as reported by platform adapters. Fulfillment is never inferred by this plugin. Only an adapter reports it.
 
-## Install
+## The mental model
 
-Add the package to your app's `packages/app`:
+| Concept | What it is | Where it lives |
+| --- | --- | --- |
+| **Profile** (`RuntimeConditionsProfile`) | A description of one codebase, independent of where it runs: its `workload.uri`, the `extensions` it uses, and the `conditions` it declares. Each condition has a `kind`, an `interface.type`, and an optional `optional` flag. | A custom resource (`runtimeconditions.io/v1alpha1`) in a cluster. Conceptually it could live anywhere; only the current fetch is Kubernetes. |
+| **Deployment** | One cluster where a matching profile exists. The same profile in dev, prod, and federal means three deployments, shown as three cards on the Component page. | Derived: profile found in cluster X. |
+| **Condition** | A capability the workload needs (e.g. `available-stock-capability`) with an interface contract. | `profile.conditions[]`. |
+| **Fulfillment** | A report from a platform adapter that a condition is satisfied in an environment, and by which concrete resources. Never inferred by the plugin. Only reported. | Stored by the companion backend plugin via `POST /api/runtime-conditions/fulfillments`. |
+| **Extension** | A pluggable capability the workload consumes. Extension URLs of the form `https://runtimeconditions.io/extensions/<ns>/<name>/runtimeconditions.extension.yaml` are linked by the UI to their definition in the `runtimeconditions/extensions` repo. | `profile.extensions[]`. |
+
+**Correlation rule (important):** a profile belongs to a Component when the profile's `workload.uri` equals the Component's `backstage.io/source-location` annotation, with the `url:` prefix stripped. Matching is by identity (repo URL), not by Kubernetes labels.
+
+Profile YAML doesn't have to live in Kubernetes at all. It can just as well live in a Git repo or a file server. This plugin only reads it from Kubernetes today because that's the only source wired up so far. The correlation and rendering logic doesn't assume Kubernetes. Only the current fetch does.
+
+## Quickstart
+
+Prerequisites: the Kubernetes plugin configured in your Backstage app with at least one cluster registered, and the CRD `runtimeconditionsprofiles.runtimeconditions.io` installed in each cluster you want scanned. Profiles are listed from every configured cluster through the Kubernetes plugin's proxy API. No per-entity Kubernetes annotation or `kubernetes.customResources` config is needed.
+
+Frontend:
 
 ```
 yarn --cwd packages/app add @runtimeconditions/plugin-runtime-conditions
@@ -38,33 +45,7 @@ import {
 </EntityLayout.Route>
 ```
 
-Requires the Kubernetes plugin already configured in the app, with at least
-one cluster registered, since profiles are currently read as
-`RuntimeConditionsProfile` custom resources from every configured cluster.
-No per-entity Kubernetes annotation or `kubernetes.customResources` config is
-needed: this plugin lists profiles directly through the Kubernetes plugin's
-proxy API rather than the entity-scoped fetch.
-
-## Correlating a Profile to a Component
-
-A profile describes a codebase, not a deployment, so it's matched by
-identity, not by Kubernetes labels. A `RuntimeConditionsProfile` is shown on
-a Component's page when its `workload.uri` equals that Component's
-`backstage.io/source-location` annotation (with the `url:` prefix stripped).
-The same profile can be found in more than one cluster; each is shown as its
-own deployment.
-
-Profile YAML doesn't have to live in Kubernetes at all, it can just as well
-live in a Git repo or a file server. This plugin only reads it from
-Kubernetes today because that's the only source wired up so far; the
-correlation and rendering logic here doesn't assume Kubernetes, only the
-current fetch does.
-
-## Fulfillment API
-
-`backend/` is `@runtimeconditions/plugin-runtime-conditions-backend`, a
-companion backend plugin an adapter reports fulfillment to. Add it to your
-app's `packages/backend`:
+Backend, only if adapters will report fulfillments:
 
 ```
 yarn --cwd packages/backend add @runtimeconditions/plugin-runtime-conditions-backend
@@ -74,66 +55,30 @@ yarn --cwd packages/backend add @runtimeconditions/plugin-runtime-conditions-bac
 backend.add(import('@runtimeconditions/plugin-runtime-conditions-backend'));
 ```
 
-An adapter registers a fulfillment with:
+Open any Component with a `backstage.io/source-location` annotation. A "Runtime Conditions" tab appears.
 
-```
-POST /api/runtime-conditions/fulfillments
-{
-  "profileName": "request-coordinator",
-  "condition": "available-stock-capability",
-  "environment": "dev",
-  "resources": [
-    {
-      "kind": "CiliumNetworkPolicy",
-      "provider": "kubernetes",
-      "reference": "rc-cilium/applications/request-coordinator-egress",
-      "componentRef": "component:default/inventory-service",
-      "automation": { "tool": "kratix", "reference": "cnp-promise" }
-    }
-  ]
-}
-```
+## Documentation
 
-- A condition is often fulfilled by more than one resource, e.g. a
-  `CiliumNetworkPolicy` plus a cert-manager `Certificate` for an API
-  condition, or a database plus a `CiliumNetworkPolicy` plus a `Secret` for a
-  datastore condition, so `resources` is always an array, never a single
-  object.
-- Each resource's `reference` is whatever uniquely identifies it in its
-  environment, e.g. `cluster/namespace/kind/name` for Kubernetes or an ARN
-  for a cloud resource.
-- `resource.provider` and `resource.automation.tool` are free-form strings,
-  not an enum, since the set of platforms and automation tools isn't fixed.
-- `resource.componentRef` and `resource.automation` are optional. When a
-  resource's `provider` is `"kubernetes"` and it carries a `componentRef`,
-  the frontend links its reference to that component's Kubernetes tab in the
-  Kubernetes Backstage plugin.
-- `automation` lives on each resource, not on the fulfillment as a whole,
-  because a single POST doesn't have to come from one adapter's work: a
-  platform composed of several independent adapters (say, separate Kratix
-  Promises for network policy, certificates, and secrets) can each POST
-  their own resources for the same condition and environment, and each
-  resource keeps its own automation provenance.
+- [Usage: critical-path workflows](docs/usage.md)
+- [Architecture and API reference](docs/architecture.md)
+- [Fulfillment API for adapters](docs/fulfillment-api.md)
+- [Releases](docs/releases.md)
 
-Every POST is purely additive, nothing is ever looked up by key and
-overwritten, so multiple adapters can post to the same profile, condition,
-and even the same environment concurrently without racing or clobbering
-each other; each POST's resources simply show up alongside whatever else
-has already been reported for that condition.
+## Ecosystem
 
-The frontend reads `GET /api/runtime-conditions/fulfillments?profileName=...`.
-A single condition can be fulfilled in more than one environment (dev, prod,
-federal), each independently, so the conditions table shows how many
-distinct environments have reported a fulfillment for that condition, even
-if multiple adapters posted to the same one; expanding a row shows a table
-of every environment, resource, and automation tool involved. A condition
-with no reported fulfillment shows none, it is never inferred.
+Part of the Runtime Conditions org, https://github.com/runtimeconditions:
 
-## Releases
+- [spec](https://github.com/runtimeconditions/spec): the Runtime Conditions specification
+- [extensions](https://github.com/runtimeconditions/extensions): first-party extension definitions; profile extension URLs link here
+- [rc-demos](https://github.com/runtimeconditions/rc-demos): demos, including the `cilium-policy/adapter` fulfillment adapter
+- [rc-cli](https://github.com/runtimeconditions/rc-cli): CLI that generates and validates profiles
+- [go-rc-profiler](https://github.com/runtimeconditions/go-rc-profiler), [java-rc-profiler](https://github.com/runtimeconditions/java-rc-profiler), [python-rc-profiler](https://github.com/runtimeconditions/python-rc-profiler): language profilers
+- https://runtimeconditions.github.io: public reader guide
 
-Merging a `feat`, `fix`, `perf`, `revert`, or breaking change to `main`
-publishes both packages to npm at the same version, tags the merge commit
-`vX.Y.Z`, and creates a GitHub release. Other changes, such as docs or CI, do
-not release. Versions follow semantic versioning and come from the PR titles
-described in `CONTRIBUTING.md`. Publishing uses npm trusted publishing, so no
-token is stored; `CONTRIBUTING.md` lists the one-time setup.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
